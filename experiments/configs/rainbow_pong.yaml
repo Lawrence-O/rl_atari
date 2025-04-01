@@ -1,0 +1,42 @@
+# Rainbow DQN configuration for Pong
+
+# Environment settings
+env_name: "ALE/Pong-v5"
+frame_skip: 4
+frame_stack: 4
+episode_life: true
+clip_rewards: true
+
+# Core agent parameters
+gamma: 0.99
+learning_rate: 0.0001  # 6.25e-5, typically lower than vanilla DQN
+batch_size: 32
+target_update_freq: 8000
+
+# Replay buffer parameters
+buffer_size: 100000
+alpha: 0.6              # PER: Priority exponent (how much to use priorities)
+beta: 0.4               # PER: Initial importance sampling weight
+beta_annealing: 1250000   # PER: Number of steps to anneal beta to 1.0 10000000
+td_error_epsilon: 1e-6  # PER: Small constant to add to priorities
+
+# N-step returns
+n_steps: 3              # Number of steps for n-step returns (was 4)
+
+# Exploration parameters
+epsilon_start: 1.0
+epsilon_end: 0.01       # Rainbow often uses lower final epsilon (0.01 vs 0.1)
+epsilon_decay: 4000  # Episodes to decay epsilon 
+
+# Training parameters
+num_episodes: 5000
+max_steps_per_episode: 10000  # Max number of steps per episode
+evaluation_freq: 100          # Evaluate every 200 episodes
+num_evaluation_episodes: 20
+log_freq: 10                  # Log every episode
+save_freq: 100                # Save every 200 episodes
+video_record_frequency: 2  # Record every X evaluations
+
+# Hardware and randomness
+seed: 42
+device: "cuda"  # Use "cpu" if no GPU availablen_steps: 4 
