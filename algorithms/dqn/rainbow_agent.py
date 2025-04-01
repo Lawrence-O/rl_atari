@@ -33,6 +33,7 @@ class RainbowAgent(Agent):
         self.beta = config.get("beta", 0.4) # Importance sampling exponent
         self.td_error_epsilon = config.get("td_error_epsilon", 1e-6)
         self.beta_annealing = config.get("beta_annealing", 100000) # Steps to anneal beta to 1.0
+        self.replay_start_size = config.get("replay_start_size", 80000) # Steps before starting to sample from replay buffer
 
         # Get state and action dimensions
         state_shape = env.get_state_shape()
@@ -158,6 +159,14 @@ class RainbowAgent(Agent):
         Returns:
             Dictionary of training metrics
         """
+        # Skip training if buffer isn't filled to minimum size
+        if len(self.memory) < self.replay_start_size:
+            return {
+                "buffer_size": len(self.memory), 
+                "buffer_target": self.replay_start_size,
+                "loss": None
+            }
+
         # Skip training if no experience is provided
         if len(self.memory) < self.batch_size:
             return { "loss": None }
@@ -269,7 +278,7 @@ class RainbowAgent(Agent):
                     bias_sigmas.append(module.bias_sigma.abs().mean().item())
                     
                     # Noise magnitude (average absolute noise)
-                    if self.training:
+                    if self.policy_net.training:
                         weight_noise = (module.weight_sigma * module.weight_epsilon).abs().mean().item()
                         bias_noise = (module.bias_sigma * module.bias_epsilon).abs().mean().item()
                         noise_magnitudes.append((weight_noise + bias_noise) / 2)

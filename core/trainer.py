@@ -12,7 +12,7 @@ from PIL import Image
 
 from core.environment import AtariWrapper
 from core.utils import set_seed
-from core.plotting import RLPlotter  # New import for plotting
+from core.plotting import RLPlotter
 
 
 class Timer:
@@ -32,7 +32,7 @@ class Timer:
 
 
 class RLTrainer:
-    """Generic trainer for reinforcement learning agents."""
+    """Generic trainer for reinforcement learning agents using frame-based evaluation."""
     
     def __init__(self, agent_class, config, experiment_name=None, experiment_dir=None):
         """Initialize trainer.
@@ -83,37 +83,27 @@ class RLTrainer:
         self.agent = agent_class(self.env, config, self.device)
         
         # Training parameters
-        self.num_episodes = config.get("num_episodes", 1000)
         self.max_steps_per_episode = config.get("max_steps_per_episode", 10000)
-        self.evaluation_freq = config.get("evaluation_freq", 50)
         self.num_evaluation_episodes = config.get("num_evaluation_episodes", 10)
         self.log_freq = config.get("log_freq", 10)
-        self.save_freq = config.get("save_freq", 100)
+        
+        # Frame-based parameters
         self.eval_frequency_frames = config.get("eval_frequency_frames", 1000000)
         self.save_frequency_frames = config.get("save_frequency_frames", 2000000)
         self.max_frames = config.get("max_frames", 50000000)
 
+        # Frame counter
         self.total_frames = 0
-        self.eval_frames = []
         
         # Initialize basic tracking variables
         self.episode_rewards = []
         self.episode_lengths = []
         self.eval_rewards = []
-        self.eval_episodes = []
+        self.eval_frames = []
         self.training_losses = []
         self.q_values = []
         
-        # Initialize advanced metrics tracking
-        self.mean_td_errors = []
-        self.max_td_errors = []
-        self.weight_variance = []
-        self.memory_sizes = []
-        self.beta_values = []
-        self.network_distances = []
-        self.epsilon_values = []
-    
-        # Initialize advanced metrics tracking with flexible dictionary approach
+        # Initialize metrics tracking with flexible dictionary approach
         self.metrics = {
             "mean_td_errors": [],
             "max_td_errors": [],
@@ -121,12 +111,10 @@ class RLTrainer:
             "memory_sizes": [],
             "beta_values": [],
             "network_distances": [],
-            # Standard metrics (may be unused by some agents)
             "epsilon_values": [],
-            # NoisyNet specific metrics
-            "weight_sigma_values": [],
-            "bias_sigma_values": [],
-            "noise_magnitude_values": []
+            "weight_sigmas": [],
+            "bias_sigmas": [],
+            "noise_magnitudes": []
         }
         
         # Initialize plotter
@@ -300,14 +288,17 @@ class RLTrainer:
             "episode_rewards": self.episode_rewards,
             "episode_lengths": self.episode_lengths,
             "training_losses": self.training_losses,
-            "eval_episodes": self.eval_episodes,
+            "eval_frames": self.eval_frames,  # Use frames as x-axis
             "eval_rewards": self.eval_rewards,
             "q_values": self.q_values,
         }
+        
         # Add all tracked metrics
         for metric_name, metric_values in self.metrics.items():
             if metric_values:  # Only add non-empty metrics
-                training_data[metric_name.replace("_values", "")] = metric_values
+                # Store with consistent naming
+                clean_name = metric_name.replace("_values", "")
+                training_data[clean_name] = metric_values
         
         # Use the plotter to create all plots
         self.plotter.create_all_plots(training_data, buffer_capacity)
@@ -317,18 +308,6 @@ class RLTrainer:
         try:
             # Create an environment with render mode
             env_name = self.config.get("env_name", "ALE/Pong-v5")
-            
-            # Define preprocessing function for frames
-            def preprocess_frame(frame):
-                if len(frame.shape) == 3 and frame.shape[2] == 3:
-                    frame = np.mean(frame, axis=2, keepdims=False)
-                
-                frame = Image.fromarray(frame)
-                frame = frame.convert('L')
-                frame = frame.resize((84, 84))
-                frame = np.array(frame) / 255.0
-                
-                return frame
             
             # Create environment with rendering
             env = AtariWrapper(
@@ -393,12 +372,15 @@ class RLTrainer:
         return self.video_dir
         
     def train(self):
-        """Train the agent and evaluate periodically."""
+        """Train the agent using frame-based evaluation."""
         self.timer.start()
+        self.logger.info(f"Starting training for {self.max_frames:,} frames")
+        
         episode = 0
         next_eval_frame = self.eval_frequency_frames
         next_save_frame = self.save_frequency_frames
         
+        # Main training loop - continue until max frames is reached
         while self.total_frames < self.max_frames:
             episode += 1
             state, _ = self.env.reset()
@@ -409,224 +391,181 @@ class RLTrainer:
             episode_loss = []
             steps = 0
             
+            # Episode loop
             while not done and steps < self.max_steps_per_episode:
-                # For agents that implement store_transition
-                if hasattr(self.agent, "store_transition"):
-                    # Select action
-                    action = self.agent.select_action(state)
-                    
-                    # Execute action
-                    next_state, reward, terminated, truncated, _ = self.env.step(action)
-                    done = terminated or truncated
-                    
-                    # Process next state
-                    if not done:
-                        next_state = self.preprocess_observation(next_state)
-                    else:
-                        next_state = None
-                    
-                    # Store transition using agent's method
-                    self.agent.store_transition(state, action, reward, next_state, done)
-                    
-                    # Move to the next state
-                    state = next_state if next_state is not None else state
-                    
-                else:
-                    # For agents with traditional memory.push approach
-                    # Select action
-                    action = self.agent.select_action(state)
-                    
-                    # Execute action
-                    next_state, reward, terminated, truncated, _ = self.env.step(action)
-                    done = terminated or truncated
-                    
-                    # Process next state
-                    if not done:
-                        next_state = self.preprocess_observation(next_state)
-                    else:
-                        next_state = None
-                    
-                    # Store transition in replay buffer
-                    self.agent.memory.push(state, action, reward, next_state, done)
-                    
-                    # Move to the next state
-                    state = next_state if next_state is not None else state
+                # Select action
+                action = self.agent.select_action(state)
                 
-                # Get the most recent training metrics from the agent
+                # Execute action
+                next_state, reward, terminated, truncated, _ = self.env.step(action)
+                done = terminated or truncated
+                
+                # Process next state
+                if not done:
+                    next_state = self.preprocess_observation(next_state)
+                else:
+                    next_state = None
+                
+                # Store transition - support both API styles
+                if hasattr(self.agent, "store_transition"):
+                    self.agent.store_transition(state, action, reward, next_state, done)
+                else:
+                    self.agent.memory.push(state, action, reward, next_state, done)
+                
+                # Move to the next state
+                state = next_state if next_state is not None else state
+                
+                # Train the agent and get metrics
                 latest_metrics = self.agent.train()
 
-                # Collect any metrics returned by the agent - more flexible approach
+                # Track buffer size and target if available
+                if latest_metrics and "buffer_size" in latest_metrics and "buffer_target" in latest_metrics:
+                    if self.total_frames % 5000 == 0 or latest_metrics["buffer_size"] == latest_metrics["buffer_target"]:
+                        self.logger.info(
+                            f"Collecting experiences: {latest_metrics['buffer_size']:,}/{latest_metrics['buffer_target']:,} "
+                            f"frames ({latest_metrics['buffer_size']/latest_metrics['buffer_target']*100:.1f}%) - "
+                            f"Learning will start at {latest_metrics['buffer_target']:,} frames"
+                        )
+
+                # Track loss if available
+                if latest_metrics and 'loss' in latest_metrics and latest_metrics['loss'] is not None:
+                    episode_loss.append(latest_metrics['loss'])
+                    self.training_losses.append(latest_metrics['loss'])
+
+                # Collect all metrics
                 if latest_metrics:
                     for metric_name, metric_value in latest_metrics.items():
-                        # Check if the metric is something we want to track
                         if metric_value is not None:
-                            # Convert to our naming convention for storage
-                            storage_name = f"{metric_name}_values" if not metric_name.endswith("_values") else metric_name
-                            
-                            # Create storage if it doesn't exist yet
+                            # Standardize naming convention
+                            storage_name = metric_name + "s" if not metric_name.endswith("s") else metric_name
+
+                            # Ensure storage exists
                             if storage_name not in self.metrics:
                                 self.metrics[storage_name] = []
                                 
                             # Store the metric
                             self.metrics[storage_name].append(metric_value)
-                            
-                            # Special case for backward compatibility
-                            if metric_name == "epsilon":
-                                self.epsilon_values.append(metric_value)  # Legacy support
-                            elif metric_name == "mean_td_error":
-                                self.mean_td_errors.append(metric_value)  # Legacy support
-                            elif metric_name == "max_td_error":
-                                self.max_td_errors.append(metric_value)  # Legacy support
-                            elif metric_name == "weight_variance":
-                                self.weight_variance.append(metric_value)  # Legacy support
-                            elif metric_name == "memory_size":
-                                self.memory_sizes.append(metric_value)  # Legacy support
-                            elif metric_name == "beta":
-                                self.beta_values.append(metric_value)  # Legacy support
-                            elif metric_name == "network_distance":
-                                self.network_distances.append(metric_value)  # Legacy support
-                # Update Counters
+                
+                # Update counters
                 episode_reward += reward
                 steps += 1
                 self.total_frames += 1
 
-                # Check for evaluation based on frame count
+                # Check if we've reached max frames
+                if self.total_frames >= self.max_frames:
+                    self.logger.info(f"Reached frame limit of {self.max_frames:,}, stopping training")
+                    break
+
+                # Check for frame-based evaluation
                 if self.total_frames >= next_eval_frame:
-                    self.logger.info(f"Evaluating after {self.total_frames} frames (episode {episode})...")
+                    eval_start_time = time.time()
+                    self.logger.info(f"Starting evaluation at {self.total_frames:,} frames (episode {episode})")
                     
-                    # Record video periodically
+                    # Log training progress details
+                    buffer_size = len(self.agent.memory) if hasattr(self.agent, "memory") else "unknown"
+                    agent_updates = getattr(self.agent, "updates", self.total_frames)
+                    
+                    # Determine if we should record video
                     video_record_freq = self.config.get("video_record_frequency", 5)
-                    record_video = self.total_frames == self.eval_frequency_frames or next_eval_frame % (self.eval_frequency_frames * video_record_freq) == 0
+                    record_video = (
+                        self.total_frames == self.eval_frequency_frames or 
+                        (self.total_frames % (self.eval_frequency_frames * video_record_freq)) == 0
+                    )
                     
-                    # Evaluate
+                    # Evaluate agent
                     mean_reward, std_reward, mean_steps, mean_q = self.evaluate_agent(
                         record=record_video,
                         video_path=os.path.join(self.video_dir, f"eval_frame_{self.total_frames}")
                     )
                     
-                    # Store metrics
+                    eval_time = time.time() - eval_start_time
+                    
+                    # Store evaluation metrics
                     self.eval_rewards.append(mean_reward)
-                    self.eval_frames.append(self.total_frames)  # Use frames instead of episodes
+                    self.eval_frames.append(self.total_frames)
                     self.q_values.append(mean_q)
                     
-                    # Log evaluation results
+                    # Enhanced evaluation log
                     self.logger.info(
-                        f"Evaluation at {self.total_frames} frames: "
-                        f"Mean reward: {mean_reward:.1f} ± {std_reward:.1f} | "
-                        f"Mean Q-value: {mean_q:.4f}"
+                        f"Evaluation at {self.total_frames:,} frames complete: \n"
+                        f"  Reward: {mean_reward:.1f} ± {std_reward:.1f} \n"
+                        f"  Steps: {mean_steps:.1f} \n"
+                        f"  Q-value: {mean_q:.4f} \n"
+                        f"  Buffer size: {buffer_size:,} \n"
+                        f"  Agent updates: {agent_updates:,} \n"
+                        f"  Eval time: {eval_time:.2f}s \n"
+                        f"  Training progress: {self.total_frames/self.max_frames*100:.1f}% complete \n"
+                        f"  Elapsed time: {self.timer.elapsed:.1f}s"
                     )
                     
-                    # Create plots during training
+                    # Add time projection to completion
+                    if self.total_frames > 0:
+                        frames_per_second = self.total_frames / self.timer.elapsed if self.timer.elapsed > 0 else 0
+                        remaining_frames = self.max_frames - self.total_frames
+                        est_remaining_time = remaining_frames / frames_per_second if frames_per_second > 0 else float('inf')
+                        
+                        # Format time estimate
+                        if est_remaining_time < 60*60:  # Less than an hour
+                            time_str = f"{est_remaining_time/60:.1f} minutes"
+                        elif est_remaining_time < 24*60*60:  # Less than a day
+                            time_str = f"{est_remaining_time/3600:.1f} hours"
+                        else:
+                            time_str = f"{est_remaining_time/(24*3600):.1f} days"
+                            
+                        self.logger.info(f"Estimated time to completion: {time_str} (at {frames_per_second:.1f} frames/sec)")
+                    
+                    # Create plots
                     self.create_plots()
                     
                     # Set next evaluation point
                     next_eval_frame += self.eval_frequency_frames
                 
-                # Check for saving based on frame count
+                # Check for frame-based model saving
                 if self.total_frames >= next_save_frame:
                     save_path = os.path.join(self.experiment_dir, f"agent_frame_{self.total_frames}.pt")
                     self.agent.save(save_path)
-                    self.logger.info(f"Saved agent to {save_path} after {self.total_frames} frames")
+                    self.logger.info(f"Saved agent to {save_path} at {self.total_frames:,} frames")
                     next_save_frame += self.save_frequency_frames
 
-            
             # Track episode statistics
             self.episode_rewards.append(episode_reward)
             self.episode_lengths.append(steps)
-            if hasattr(self.agent, "update_epsilon"):
-                _ = self.agent.update_epsilon()
-            
-            # Track loss and TD error metrics
-            if episode_loss:
-                avg_loss = np.mean(episode_loss)
-                self.training_losses.append(avg_loss)
-            else:
-                avg_loss = float('nan')
                 
-            # Log progress
+            # Log episode progress
             if (episode + 1) % self.log_freq == 0:
+                # Calculate average metrics for logging
                 avg_reward = np.mean(self.episode_rewards[-self.log_freq:])
                 avg_length = np.mean(self.episode_lengths[-self.log_freq:])
                 
-                log_msg = [
-                    f"Episode {episode+1}/{self.num_episodes}",
-                    f"Reward: {episode_reward:.1f}",
-                    f"Avg Reward: {avg_reward:.1f}",
-                    f"Steps: {steps}",
-                ]
-
+                # Format loss string if available
                 if episode_loss:
-                    log_msg.append(f"Avg Loss: {avg_loss:.4f}")
-                # Add any advanced metrics if available
-                if hasattr(self.agent, "epsilon"):
-                    log_msg.append(f"Epsilon: {self.agent.epsilon:.4f}")
-                elif latest_metrics and "weight_sigma" in latest_metrics:
-                    log_msg.append(f"Noise σ: {latest_metrics['weight_sigma']:.4f}")
+                    avg_loss = np.mean(episode_loss)
+                    loss_str = f"Loss: {avg_loss:.4f} | "
+                else:
+                    loss_str = ""
                 
-                log_msg.append(f"Elapsed: {self.timer.elapsed:.1f}s")
-                self.logger.info(" | ".join(log_msg))
-            
-            # Evaluate agent and collect advanced metrics
-            if (episode + 1) % self.evaluation_freq == 0:
-                # Record video every 5 evaluations
-                video_record_freq = self.config.get("video_record_frequency", 5)
-                record_video = episode == 0 or (episode + 1) % (self.evaluation_freq * video_record_freq) == 0
-                video_path = None
+                # Format TD error string if available
+                td_error_str = ""
+                if "mean_td_errors" in self.metrics and self.metrics["mean_td_errors"]:
+                    td_error_str = f"TD Error: {self.metrics['mean_td_errors'][-1]:.4f} | "
                 
-                if record_video:
-                    video_path = os.path.join(self.video_dir, f"eval_episode_{episode+1}")
-                    
-                mean_reward, std_reward, mean_steps, mean_q = self.evaluate_agent(
-                    record=record_video,
-                    video_path=video_path
-                )
-                
-                # Store basic evaluation metrics
-                self.eval_rewards.append(mean_reward)
-                self.eval_episodes.append(episode + 1)
-                self.q_values.append(mean_q)
-                
-                # Get the most recent training metrics from the agent
-                latest_metrics = self.agent.train()
-                
-                # Collect advanced metrics if available
-                if latest_metrics:
-                    if "mean_td_error" in latest_metrics:
-                        self.mean_td_errors.append(latest_metrics["mean_td_error"])
-                    if "max_td_error" in latest_metrics:
-                        self.max_td_errors.append(latest_metrics["max_td_error"])
-                    if "weight_variance" in latest_metrics:
-                        self.weight_variance.append(latest_metrics["weight_variance"])
-                    if "memory_size" in latest_metrics:
-                        self.memory_sizes.append(latest_metrics["memory_size"])
-                    if "beta" in latest_metrics and latest_metrics["beta"] is not None:
-                        self.beta_values.append(latest_metrics["beta"])
-                    if "network_distance" in latest_metrics and latest_metrics["network_distance"] is not None:
-                        self.network_distances.append(latest_metrics["network_distance"])
-                    if "epsilon" in latest_metrics:
-                        self.epsilon_values.append(latest_metrics["epsilon"])
-                
-                # Log evaluation results
+                # Log comprehensive progress
                 self.logger.info(
-                    f"Evaluation after episode {episode+1}: "
-                    f"Mean reward: {mean_reward:.1f} ± {std_reward:.1f} | "
-                    f"Mean steps: {mean_steps:.1f} | Mean Q-value: {mean_q:.4f}"
+                    f"Episode {episode} | "
+                    f"Frames: {self.total_frames:,}/{self.max_frames:,} ({self.total_frames/self.max_frames*100:.1f}%) | "
+                    f"Reward: {episode_reward:.1f} | "
+                    f"Avg Reward: {avg_reward:.1f} | "
+                    f"{loss_str}"
+                    f"{td_error_str}"
+                    f"Steps: {steps} | "
+                    f"Elapsed: {self.timer.elapsed:.1f}s"
                 )
-                
-                # Create plots during training
-                self.create_plots()
-            
-            # Save agent
-            if (episode + 1) % self.save_freq == 0:
-                save_path = os.path.join(self.experiment_dir, f"agent_episode_{episode+1}.pt")
-                self.agent.save(save_path)
-                self.logger.info(f"Saved agent to {save_path}")
             
             # Update timer
             self.timer.update()
         
         # Final evaluation
-        self.logger.info("Performing final evaluation...")
+        self.logger.info("Training complete! Performing final evaluation...")
         final_video_path = os.path.join(self.video_dir, "final_evaluation")
         mean_reward, std_reward, mean_steps, mean_q = self.evaluate_agent(
             record=True, 
@@ -643,34 +582,33 @@ class RLTrainer:
         self.agent.save(save_path)
         self.logger.info(f"Saved final agent to {save_path}")
         
-        # Save all training data including advanced metrics
+        # Save training data
         training_data = {
             "episode_rewards": self.episode_rewards,
             "episode_lengths": self.episode_lengths,
             "training_losses": self.training_losses,
+            "eval_frames": self.eval_frames,
             "eval_rewards": self.eval_rewards,
-            "eval_episodes": self.eval_episodes,
             "q_values": self.q_values,
         }
-
+        
         # Add all tracked metrics
         for metric_name, metric_values in self.metrics.items():
             if metric_values:  # Only add non-empty metrics
-                # Store with consistent naming
                 clean_name = metric_name.replace("_values", "")
                 training_data[clean_name] = metric_values
         
         with open(os.path.join(self.experiment_dir, "training_data.json"), 'w') as f:
             json.dump(training_data, f)
         
-        # Generate comprehensive reports
+        # Create final plots
         self.create_plots()
         
         # Close environments
         self.env.close()
         self.eval_env.close()
         
-        # Record a demo video with the final agent
+        # Record a demo video
         try:
             self.logger.info("Recording demo video with final agent...")
             demo_video_path = self.record_video()
@@ -679,7 +617,8 @@ class RLTrainer:
             self.logger.error(f"Error recording demo video: {e}")
             self.logger.info("Continuing without demo video")
         
-        self.logger.info(f"Training completed! Results saved to {self.experiment_dir}")
+        self.logger.info(f"Training completed! Total frames: {self.total_frames:,}")
+        self.logger.info(f"Results saved to {self.experiment_dir}")
         
         return {
             "agent": self.agent,

@@ -24,7 +24,7 @@ class RLPlotter:
         self.env_name = env_name.split('/')[-1] if '/' in env_name else env_name
         
         # Set plot style
-        sns.set(style="darkgrid")
+        sns.set_theme(style="darkgrid")
         plt.rcParams["figure.figsize"] = (10, 6)
     
     def plot_episode_rewards(self, rewards: List[float], save_name: str = "rewards"):
@@ -67,38 +67,53 @@ class RLPlotter:
         plt.close()
     
     def plot_evaluation_rewards(self, 
-                            frames: List[int],  # Changed from episodes to frames
+                            frames: List[int],
                             rewards: List[float],
                             save_name: str = "eval_rewards"):
-        """Plot evaluation rewards vs frames"""
+        """Plot evaluation rewards vs frames
+        
+        Args:
+            frames: Frame numbers
+            rewards: Evaluation rewards
+            save_name: Name to save plot as
+        """
         plt.figure()
         plt.plot(frames, rewards, 'o-')
-        plt.xlabel("Frames (millions)")
+        
+        # Format x-axis for readability
+        if frames and max(frames) > 1000000:
+            plt.xlabel("Frames (millions)")
+            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{x/1000000:.1f}M')
+        else:
+            plt.xlabel("Frames")
+            
         plt.ylabel("Evaluation Reward")
         plt.title(f"Evaluation rewards - {self.env_name}")
-        
-        # Format x-axis to show millions of frames
-        if frames and frames[-1] > 1000000:
-            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{int(x/1000000)}M')
-        
         plt.tight_layout()
         plt.savefig(os.path.join(self.plot_dir, f"{save_name}.png"))
         plt.close()
     
     def plot_q_values(self, 
-                     episodes: List[int], 
+                     frames: List[int], 
                      q_values: List[float], 
                      save_name: str = "q_values"):
         """Plot Q-values
         
         Args:
-            episodes: Episode numbers
+            frames: Frame numbers
             q_values: Q-values
             save_name: Name to save plot as
         """
         plt.figure()
-        plt.plot(episodes, q_values, 'o-')
-        plt.xlabel("Episode")
+        plt.plot(frames, q_values, 'o-')
+        
+        # Format x-axis for readability
+        if frames and max(frames) > 1000000:
+            plt.xlabel("Frames (millions)")
+            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{x/1000000:.1f}M')
+        else:
+            plt.xlabel("Frames")
+            
         plt.ylabel("Average Q-Value")
         plt.title(f"Q-value evolution - {self.env_name}")
         plt.tight_layout()
@@ -114,7 +129,7 @@ class RLPlotter:
         """
         plt.figure()
         plt.plot(losses)
-        plt.xlabel("Episode")
+        plt.xlabel("Update Step")
         plt.ylabel("Loss")
         plt.yscale('log')
         plt.title(f"Training loss - {self.env_name}")
@@ -123,26 +138,32 @@ class RLPlotter:
         plt.close()
     
     def plot_td_errors(self, 
-                      episodes: List[int], 
+                      frames: List[int], 
                       mean_td_errors: List[float],
                       max_td_errors: Optional[List[float]] = None,
                       save_name: str = "td_errors"):
         """Plot TD errors
         
         Args:
-            episodes: Episode numbers
+            frames: Frame numbers
             mean_td_errors: Mean TD errors
             max_td_errors: Maximum TD errors (optional)
             save_name: Name to save plot as
         """
         plt.figure()
-        plt.plot(episodes, mean_td_errors, label="Mean TD Error")
+        plt.plot(frames, mean_td_errors, label="Mean TD Error")
         
         if max_td_errors:
-            plt.plot(episodes, max_td_errors, alpha=0.5, label="Max TD Error")
+            plt.plot(frames, max_td_errors, alpha=0.5, label="Max TD Error")
             plt.legend()
+        
+        # Format x-axis for readability
+        if frames and max(frames) > 1000000:
+            plt.xlabel("Frames (millions)")
+            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{x/1000000:.1f}M')
+        else:
+            plt.xlabel("Frames")
             
-        plt.xlabel("Episode")
         plt.ylabel("TD Error")
         plt.title(f"TD errors - {self.env_name}")
         plt.tight_layout()
@@ -150,22 +171,29 @@ class RLPlotter:
         plt.close()
     
     def plot_memory_usage(self, 
-                         episodes: List[int], 
+                         frames: List[int], 
                          memory_size: List[int],
                          capacity: int,
                          save_name: str = "memory_usage"):
         """Plot memory buffer usage
         
         Args:
-            episodes: Episode numbers
+            frames: Frame numbers
             memory_size: Memory sizes
             capacity: Total buffer capacity
             save_name: Name to save plot as
         """
         plt.figure()
-        plt.plot(episodes, memory_size)
+        plt.plot(frames, memory_size)
         plt.axhline(y=capacity, color='r', linestyle='--', label="Capacity")
-        plt.xlabel("Episode")
+        
+        # Format x-axis for readability
+        if frames and max(frames) > 1000000:
+            plt.xlabel("Frames (millions)")
+            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{x/1000000:.1f}M')
+        else:
+            plt.xlabel("Frames")
+            
         plt.ylabel("Buffer Size")
         plt.title(f"Replay buffer usage - {self.env_name}")
         plt.legend()
@@ -174,19 +202,26 @@ class RLPlotter:
         plt.close()
     
     def plot_per_weights(self, 
-                        episodes: List[int], 
+                        frames: List[int], 
                         weight_variance: List[float],
                         save_name: str = "per_weights"):
         """Plot PER weight variance
         
         Args:
-            episodes: Episode numbers
+            frames: Frame numbers
             weight_variance: Weight variance values
             save_name: Name to save plot as
         """
         plt.figure()
-        plt.plot(episodes, weight_variance)
-        plt.xlabel("Episode")
+        plt.plot(frames, weight_variance)
+        
+        # Format x-axis for readability
+        if frames and max(frames) > 1000000:
+            plt.xlabel("Frames (millions)")
+            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{x/1000000:.1f}M')
+        else:
+            plt.xlabel("Frames")
+            
         plt.ylabel("Weight Variance")
         plt.title(f"PER weight variance - {self.env_name}")
         plt.tight_layout()
@@ -194,20 +229,27 @@ class RLPlotter:
         plt.close()
     
     def plot_beta(self, 
-                 episodes: List[int], 
+                 frames: List[int], 
                  beta_values: List[float],
                  save_name: str = "beta"):
         """Plot beta annealing
         
         Args:
-            episodes: Episode numbers
+            frames: Frame numbers
             beta_values: Beta values
             save_name: Name to save plot as
         """
         plt.figure()
-        plt.plot(episodes, beta_values)
+        plt.plot(frames, beta_values)
         plt.axhline(y=1.0, color='r', linestyle='--', label="Target")
-        plt.xlabel("Episode")
+        
+        # Format x-axis for readability
+        if frames and max(frames) > 1000000:
+            plt.xlabel("Frames (millions)")
+            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{x/1000000:.1f}M')
+        else:
+            plt.xlabel("Frames")
+            
         plt.ylabel("Beta")
         plt.title(f"PER beta annealing - {self.env_name}")
         plt.legend()
@@ -216,19 +258,26 @@ class RLPlotter:
         plt.close()
     
     def plot_network_distance(self, 
-                             episodes: List[int], 
+                             frames: List[int], 
                              distances: List[float],
                              save_name: str = "network_distance"):
         """Plot network distance
         
         Args:
-            episodes: Episode numbers
+            frames: Frame numbers
             distances: Network distances
             save_name: Name to save plot as
         """
         plt.figure()
-        plt.plot(episodes, distances, 'o-')
-        plt.xlabel("Episode")
+        plt.plot(frames, distances, 'o-')
+        
+        # Format x-axis for readability
+        if frames and max(frames) > 1000000:
+            plt.xlabel("Frames (millions)")
+            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{x/1000000:.1f}M')
+        else:
+            plt.xlabel("Frames")
+            
         plt.ylabel("L1 Distance")
         plt.title(f"Policy-Target network distance - {self.env_name}")
         plt.tight_layout()
@@ -236,38 +285,53 @@ class RLPlotter:
         plt.close()
     
     def plot_epsilon(self, 
-                    episodes: List[int], 
+                    frames: List[int], 
                     epsilon_values: List[float],
                     save_name: str = "epsilon"):
         """Plot epsilon decay
         
         Args:
-            episodes: Episode numbers
+            frames: Frame numbers
             epsilon_values: Epsilon values
             save_name: Name to save plot as
         """
         plt.figure()
-        plt.plot(episodes, epsilon_values)
-        plt.xlabel("Episode")
+        plt.plot(frames, epsilon_values)
+        
+        # Format x-axis for readability
+        if frames and max(frames) > 1000000:
+            plt.xlabel("Frames (millions)")
+            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{x/1000000:.1f}M')
+        else:
+            plt.xlabel("Frames")
+            
         plt.ylabel("Epsilon")
         plt.title(f"Exploration rate (epsilon) - {self.env_name}")
         plt.tight_layout()
         plt.savefig(os.path.join(self.plot_dir, f"{save_name}.png"))
         plt.close()
+        
     def plot_noise_magnitude(self,
-                        episodes: List[int],
-                        noise_magnitudes: List[float],
-                        save_name: str = "noise_magnitude"):
+                          frames: List[int],
+                          noise_magnitudes: List[float],
+                          save_name: str = "noise_magnitude"):
         """Plot the magnitude of noise in NoisyNet layers
         
         Args:
-            episodes: Episode numbers
+            frames: Frame numbers
             noise_magnitudes: Average magnitude of noise
             save_name: Name to save plot as
         """
         plt.figure()
-        plt.plot(episodes, noise_magnitudes, 'o-')
-        plt.xlabel("Episode")
+        plt.plot(frames, noise_magnitudes, 'o-')
+        
+        # Format x-axis for readability
+        if frames and max(frames) > 1000000:
+            plt.xlabel("Frames (millions)")
+            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{x/1000000:.1f}M')
+        else:
+            plt.xlabel("Frames")
+            
         plt.ylabel("Noise Magnitude")
         plt.title(f"NoisyNet noise magnitude - {self.env_name}")
         plt.tight_layout()
@@ -275,26 +339,32 @@ class RLPlotter:
         plt.close()
     
     def plot_sigma_params(self,
-                        episodes: List[int],
+                        frames: List[int],
                         weight_sigmas: List[float],
                         bias_sigmas: List[float] = None,
                         save_name: str = "sigma_params"):
         """Plot the sigma parameter values in NoisyNet layers
         
         Args:
-            episodes: Episode numbers
+            frames: Frame numbers
             weight_sigmas: Average sigma values for weights
             bias_sigmas: Average sigma values for biases (optional)
             save_name: Name to save plot as
         """
         plt.figure()
-        plt.plot(episodes, weight_sigmas, 'o-', label="Weight Sigma")
+        plt.plot(frames, weight_sigmas, 'o-', label="Weight Sigma")
         
         if bias_sigmas:
-            plt.plot(episodes, bias_sigmas, 'o-', alpha=0.7, label="Bias Sigma")
+            plt.plot(frames, bias_sigmas, 'o-', alpha=0.7, label="Bias Sigma")
             plt.legend()
             
-        plt.xlabel("Episode")
+        # Format x-axis for readability
+        if frames and max(frames) > 1000000:
+            plt.xlabel("Frames (millions)")
+            plt.gca().xaxis.set_major_formatter(lambda x, pos: f'{x/1000000:.1f}M')
+        else:
+            plt.xlabel("Frames")
+            
         plt.ylabel("Sigma Value")
         plt.title(f"NoisyNet sigma parameters - {self.env_name}")
         plt.tight_layout()
@@ -308,96 +378,92 @@ class RLPlotter:
             training_data: Dictionary of training data
             buffer_capacity: Capacity of replay buffer
         """
+        # Get the x-axis values (use frames or fallback to episodes)
+        eval_x_axis = training_data.get("eval_frames", training_data.get("eval_episodes", []))
+
         # Basic plots
         if "episode_rewards" in training_data and training_data["episode_rewards"]:
             self.plot_episode_rewards(training_data["episode_rewards"])
             self.plot_smoothed_rewards(training_data["episode_rewards"])
         
-        if "eval_episodes" in training_data and "eval_rewards" in training_data:
-            if training_data["eval_episodes"] and training_data["eval_rewards"]:
-                self.plot_evaluation_rewards(
-                    training_data["eval_episodes"], 
-                    training_data["eval_rewards"]
-                )
+        # Evaluation rewards - uses eval frames
+        if "eval_rewards" in training_data and training_data["eval_rewards"] and eval_x_axis:
+            self.plot_evaluation_rewards(eval_x_axis, training_data["eval_rewards"])
         
+        # Training loss - uses update steps as x-axis
         if "training_losses" in training_data and training_data["training_losses"]:
             self.plot_loss(training_data["training_losses"])
         
-        # Advanced metrics
-        if "eval_episodes" in training_data and "q_values" in training_data:
-            if training_data["eval_episodes"] and training_data["q_values"]:
-                self.plot_q_values(
-                    training_data["eval_episodes"], 
-                    training_data["q_values"]
-                )
+        # Q-values - uses eval frames
+        if "q_values" in training_data and training_data["q_values"] and eval_x_axis:
+            self.plot_q_values(eval_x_axis, training_data["q_values"])
+
+        # Generate frames for metrics collected more frequently
+        # Generate evenly spaced x-axis values for metrics that don't align with eval points
+        def get_metric_x_axis(metric_values):
+            if not metric_values:
+                return []
+            
+            # For metrics that are collected more frequently than eval points, 
+            # create a synthetic x-axis ranging from 0 to max_frames
+            max_frames = max(eval_x_axis) if eval_x_axis else 0
+            return np.linspace(0, max_frames, len(metric_values)).tolist()
         
-        # PER metrics
-        if "eval_episodes" in training_data and "weight_variance" in training_data:
-            if training_data["eval_episodes"] and training_data["weight_variance"]:
-                self.plot_per_weights(
-                    training_data["eval_episodes"], 
-                    training_data["weight_variance"]
-                )
+        # PER metrics - create synthetic x-axis
+        if "weight_variance" in training_data and training_data["weight_variance"]:
+            per_x_axis = get_metric_x_axis(training_data["weight_variance"])
+            if per_x_axis:
+                self.plot_per_weights(per_x_axis, training_data["weight_variance"])
         
-        # Beta annealing
-        if "eval_episodes" in training_data and "beta_values" in training_data:
-            if training_data["eval_episodes"] and training_data["beta_values"]:
-                self.plot_beta(
-                    training_data["eval_episodes"], 
-                    training_data["beta_values"]
-                )
+        # Beta annealing - create synthetic x-axis
+        if "beta_values" in training_data and training_data["beta_values"]:
+            beta_x_axis = get_metric_x_axis(training_data["beta_values"])
+            if beta_x_axis:
+                self.plot_beta(beta_x_axis, training_data["beta_values"])
         
-        # TD errors
-        if "eval_episodes" in training_data and "mean_td_errors" in training_data:
-            if (training_data["eval_episodes"] and 
-                training_data["mean_td_errors"]):
-                max_td_errors = (training_data.get("max_td_errors") 
-                               if "max_td_errors" in training_data 
-                               else None)
-                self.plot_td_errors(
-                    training_data["eval_episodes"], 
-                    training_data["mean_td_errors"],
-                    max_td_errors
-                )
+        # TD errors - create synthetic x-axis
+        if "mean_td_errors" in training_data and training_data["mean_td_errors"]:
+            td_x_axis = get_metric_x_axis(training_data["mean_td_errors"])
+            if td_x_axis:
+                max_td_errors = training_data.get("max_td_errors", None)
+                self.plot_td_errors(td_x_axis, training_data["mean_td_errors"], max_td_errors)
         
-        # Memory usage
-        if "eval_episodes" in training_data and "memory_sizes" in training_data:
-            if training_data["eval_episodes"] and training_data["memory_sizes"]:
-                self.plot_memory_usage(
-                    training_data["eval_episodes"], 
-                    training_data["memory_sizes"],
-                    buffer_capacity
-                )
+        # Memory usage - create synthetic x-axis
+        if "memory_sizes" in training_data and training_data["memory_sizes"]:
+            memory_x_axis = get_metric_x_axis(training_data["memory_sizes"])
+            if memory_x_axis:
+                self.plot_memory_usage(memory_x_axis, training_data["memory_sizes"], buffer_capacity)
         
-        # Network distance
-        if "eval_episodes" in training_data and "network_distances" in training_data:
-            if training_data["eval_episodes"] and training_data["network_distances"]:
-                self.plot_network_distance(
-                    training_data["eval_episodes"], 
-                    training_data["network_distances"]
-                )
+        # Network distance - create synthetic x-axis
+        if "network_distances" in training_data and training_data["network_distances"]:
+            net_x_axis = get_metric_x_axis(training_data["network_distances"])
+            if net_x_axis:
+                self.plot_network_distance(net_x_axis, training_data["network_distances"])
         
-        # Epsilon decay
-        if "eval_episodes" in training_data and "epsilon_values" in training_data:
-            if training_data["eval_episodes"] and training_data["epsilon_values"]:
-                self.plot_epsilon(
-                    training_data["eval_episodes"], 
-                    training_data["epsilon_values"]
-                )
-        # NoisyNet metrics
-        if "eval_episodes" in training_data and "noise_magnitudes" in training_data:
-            if training_data["eval_episodes"] and training_data["noise_magnitudes"]:
-                self.plot_noise_magnitude(
-                    training_data["eval_episodes"], 
-                    training_data["noise_magnitudes"]
-                )
-        if "eval_episodes" in training_data and "weight_sigmas" in training_data:
-            if training_data["eval_episodes"] and training_data["weight_sigmas"]:
-                bias_sigmas = (training_data.get("bias_sigmas") 
-                             if "bias_sigmas" in training_data 
-                             else None)
-                self.plot_sigma_params(
-                    training_data["eval_episodes"], 
-                    training_data["weight_sigmas"],
-                    bias_sigmas
-                )
+        # Epsilon decay - create synthetic x-axis
+        if "epsilon_values" in training_data and training_data["epsilon_values"]:
+            eps_x_axis = get_metric_x_axis(training_data["epsilon_values"])
+            if eps_x_axis:
+                self.plot_epsilon(eps_x_axis, training_data["epsilon_values"])
+        
+        # NoisyNet metrics - create synthetic x-axis
+        if "noise_magnitudes" in training_data and training_data["noise_magnitudes"]:
+            noise_x_axis = get_metric_x_axis(training_data["noise_magnitudes"])
+            if noise_x_axis:
+                self.plot_noise_magnitude(noise_x_axis, training_data["noise_magnitudes"])
+        elif "noise_magnitude" in training_data and training_data["noise_magnitude"]:
+            noise_x_axis = get_metric_x_axis(training_data["noise_magnitude"])
+            if noise_x_axis:
+                self.plot_noise_magnitude(noise_x_axis, training_data["noise_magnitude"])
+        
+        # Sigma parameters - create synthetic x-axis
+        if "weight_sigmas" in training_data and training_data["weight_sigmas"]:
+            sigma_x_axis = get_metric_x_axis(training_data["weight_sigmas"])
+            if sigma_x_axis:
+                bias_sigmas = training_data.get("bias_sigmas", None)
+                self.plot_sigma_params(sigma_x_axis, training_data["weight_sigmas"], bias_sigmas)
+        elif "weight_sigma" in training_data and training_data["weight_sigma"]:
+            sigma_x_axis = get_metric_x_axis(training_data["weight_sigma"])
+            if sigma_x_axis:
+                bias_sigma = training_data.get("bias_sigma", None)
+                self.plot_sigma_params(sigma_x_axis, training_data["weight_sigma"], bias_sigma)

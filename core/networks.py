@@ -136,19 +136,21 @@ class DuelingDQNNetwork(nn.Module):
 class NoisyLinear(nn.Module):
     """Noisy linear layer for NoisyNet"""
     
-    def __init__(self, in_features, out_features, std_init=0.5):
+    def __init__(self, in_features, out_features, std_init=0.5, min_sigma=0.1):
         """Initialize the noisy linear layer
         
         Args:
             in_features: Number of input features
             out_features: Number of output features
             std_init: Initial standard deviation for noise
+            min_sigma: Minimum standard deviation for noise
         """
         super(NoisyLinear, self).__init__()
         
         self.in_features = in_features
         self.out_features = out_features
         self.std_init = std_init
+        self.min_sigma = min_sigma
         
         # Weight parameters
         # Mean values
@@ -167,14 +169,14 @@ class NoisyLinear(nn.Module):
     
     def reset_parameters(self):
         """Reset parameters of the layer"""
-        mu_range = 3 / torch.sqrt(self.in_features)
+        mu_range = 3 / np.sqrt(self.in_features)
 
         # Initialize weights and biases uniformly
         self.weight_mu.data.uniform_(-mu_range, mu_range)
         self.bias_mu.data.uniform_(-mu_range, mu_range)
 
-        self.weight_sigma.data.fill_(self.std_init / torch.sqrt(self.in_features))
-        self.bias_sigma.data.fill_(self.std_init / torch.sqrt(self.out_features))
+        self.weight_sigma.data.fill_(self.std_init / np.sqrt(self.in_features))
+        self.bias_sigma.data.fill_(self.std_init / np.sqrt(self.out_features))
     
     def _scale_noise(self, size):
         """Generate scaled noise for factorized Gaussian noise"""
@@ -190,9 +192,15 @@ class NoisyLinear(nn.Module):
         # Outer product
         self.weight_epsilon.copy_(epsilon_out.outer(epsilon_in))
         self.bias_epsilon.copy_(epsilon_out)
+    def _clamp_sigma(self, sigma):
+        """Clamp the standard deviation to a minimum value"""
+        with torch.no_grad():
+            self.weight_sigma.data.clamp_(min=self.min_sigma)
+            self.bias_sigma.data.clamp_(min=self.min_sigma)
     
     def forward(self, x):
         """Forward pass through the noisy linear layer"""
+        self._clamp_sigma(self.weight_sigma)
         if self.training:
             # During training, use both deterministic and noisy parts
             weight = self.weight_mu + self.weight_sigma * self.weight_epsilon
