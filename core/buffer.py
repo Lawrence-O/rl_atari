@@ -105,7 +105,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.td_error_epsilon = float(epsilon)
         self.priorities = torch.zeros(capacity, dtype=torch.float32, device=device)
         self.max_priority = 1.0
-        self.beta_increment = 0.001
         
     def push(self, state, action, reward, next_state, done):
         """Add experience to the buffer

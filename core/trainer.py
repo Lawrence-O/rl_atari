@@ -10,7 +10,7 @@ from datetime import datetime
 from gymnasium.wrappers import RecordVideo
 from PIL import Image
 
-from core.environment import AtariWrapper
+from core.environment import AtariWrapper, ClassicControlWrapper
 from core.utils import set_seed
 from core.plotting import RLPlotter
 
@@ -77,6 +77,8 @@ class RLTrainer:
         self.logger.info(f"Using device: {self.device}")
         
         # Create environments
+        # Check if the environment is Atari
+        self.is_atari = config.get("is_atari", True)
         self.env, self.eval_env = self._create_environments()
         
         # Create agent
@@ -117,6 +119,7 @@ class RLTrainer:
             "noise_magnitudes": []
         }
         
+        self.training_data = {}
         # Initialize plotter
         self.plot_dir = os.path.join(self.experiment_dir, "plots")
         os.makedirs(self.plot_dir, exist_ok=True)
@@ -170,26 +173,41 @@ class RLTrainer:
         frame_stack = self.config.get("frame_stack", 4)
         episode_life = self.config.get("episode_life", True)
         clip_rewards = self.config.get("clip_rewards", True)
-        
-        # Training environment
-        env = AtariWrapper(
-            env_name=env_name,
-            frame_skip=frame_skip,
-            frame_stack=frame_stack,
-            episode_life=episode_life,
-            clip_rewards=clip_rewards
-        )
-        
-        # Evaluation environment
-        eval_env = AtariWrapper(
-            env_name=env_name,
-            frame_skip=frame_skip,
-            frame_stack=frame_stack,
-            episode_life=False,  # Don't terminate on life loss for evaluation
-            clip_rewards=False   # Don't clip rewards for evaluation
-        )
+
+        if self.is_atari:
+            # Training environment
+            env = AtariWrapper(
+                env_name=env_name,
+                frame_skip=frame_skip,
+                frame_stack=frame_stack,
+                episode_life=episode_life,
+                clip_rewards=clip_rewards
+            )
+            
+            # Evaluation environment
+            eval_env = AtariWrapper(
+                env_name=env_name,
+                frame_skip=frame_skip,
+                frame_stack=frame_stack,
+                episode_life=False,  # Don't terminate on life loss for evaluation
+                clip_rewards=False   # Don't clip rewards for evaluation
+            )
+        else:
+            env = ClassicControlWrapper(env_name=env_name)
+            eval_env = ClassicControlWrapper(env_name=env_name)
+                
         
         return env, eval_env
+    def _collect_hierarchical_metrics(self, training_metrics):
+        """Collect hierarchical learning metrics"""
+        if "hierarchical_metrics" in training_metrics:
+            h_metrics = training_metrics["hierarchical_metrics"]
+            
+            # Store the metrics in training data
+            for key, value in h_metrics.items():
+                if key not in self.training_data:
+                    self.training_data[key] = []
+                self.training_data[key].append(value)
         
     def preprocess_observation(self, observation):
         """Preprocess observation for agent input."""
@@ -215,15 +233,21 @@ class RLTrainer:
             # Create video wrapper
             video_dir = os.path.dirname(video_path)
             os.makedirs(video_dir, exist_ok=True)
-            
-            eval_env = AtariWrapper(
-                env_name=self.eval_env.env_name,
-                frame_skip=self.eval_env.frame_skip,
-                frame_stack=self.eval_env.frame_stack,
-                episode_life=False,
-                clip_rewards=False,
-                render_mode="rgb_array"
-            )
+
+            if self.is_atari:
+                eval_env = AtariWrapper(
+                    env_name=self.eval_env.env_name,
+                    frame_skip=self.eval_env.frame_skip,
+                    frame_stack=self.eval_env.frame_stack,
+                    episode_life=False,
+                    clip_rewards=False,
+                    render_mode="rgb_array"
+                )
+            else:
+                eval_env = ClassicControlWrapper(
+                    env_name=self.eval_env.env_name,
+                    render_mode="rgb_array"
+                )
             
             # Add recording wrapper
             video_name = os.path.basename(video_path)
@@ -244,7 +268,7 @@ class RLTrainer:
             episode_steps = 0
             episode_q_values = []
             
-            while not done:
+            while not done and episode_steps < self.max_steps_per_episode:
                 # Get Q-values if the agent has a policy_net attribute
                 if hasattr(self.agent, 'policy_net'):
                     with torch.no_grad():
@@ -302,6 +326,10 @@ class RLTrainer:
         
         # Use the plotter to create all plots
         self.plotter.create_all_plots(training_data, buffer_capacity)
+
+        # Create hierarchical plots if we have an options agent
+        if hasattr(self.agent, 'num_options') and hasattr(self, 'training_data') and self.training_data:
+            self.plotter.create_hierarchical_plots(training_data)
         
     def record_video(self):
         """Record a video of the agent playing."""
@@ -310,15 +338,21 @@ class RLTrainer:
             env_name = self.config.get("env_name", "ALE/Pong-v5")
             
             # Create environment with rendering
-            env = AtariWrapper(
-                env_name=env_name,
-                frame_skip=self.env.frame_skip,
-                frame_stack=self.env.frame_stack,
-                episode_life=False,
-                clip_rewards=False,
-                render_mode="rgb_array"
-            )
-            
+            if self.is_atari:
+                env = AtariWrapper(
+                    env_name=env_name,
+                    frame_skip=self.env.frame_skip,
+                    frame_stack=self.env.frame_stack,
+                    episode_life=False,
+                    clip_rewards=False,
+                    render_mode="rgb_array"
+                )
+            else:
+                env = ClassicControlWrapper(
+                    env_name=env_name,
+                    render_mode="rgb_array"
+                )
+                
             # Wrap for recording
             env = RecordVideo(
                 env.env,
@@ -407,8 +441,11 @@ class RLTrainer:
                     next_state = None
                 
                 # Store transition - support both API styles
+                latest_metrics = None  # Initialize metrics variable
                 if hasattr(self.agent, "store_transition"):
-                    self.agent.store_transition(state, action, reward, next_state, done)
+                    transition_metrics = self.agent.store_transition(state, action, reward, next_state, done)
+                    if transition_metrics is not None:
+                        latest_metrics = transition_metrics
                 else:
                     self.agent.memory.push(state, action, reward, next_state, done)
                 
@@ -416,7 +453,7 @@ class RLTrainer:
                 state = next_state if next_state is not None else state
                 
                 # Train the agent and get metrics
-                latest_metrics = self.agent.train()
+                latest_metrics = self.agent.train() if not latest_metrics else latest_metrics
 
                 # Track buffer size and target if available
                 if latest_metrics and "buffer_size" in latest_metrics and "buffer_target" in latest_metrics:
@@ -436,15 +473,26 @@ class RLTrainer:
                 if latest_metrics:
                     for metric_name, metric_value in latest_metrics.items():
                         if metric_value is not None:
-                            # Standardize naming convention
-                            storage_name = metric_name + "s" if not metric_name.endswith("s") else metric_name
-
+                            # For special PG metrics, preserve their original names
+                            if metric_name in ["advantage_values", "policy_grad_norm", "value_grad_norm", "entropy", "returns"]:
+                                # Ensure consistent naming for grad norms
+                                if metric_name == "policy_grad_norm":
+                                    storage_name = "policy_grad_norms"
+                                elif metric_name == "value_grad_norm":
+                                    storage_name = "value_grad_norms"
+                                else:
+                                    storage_name = metric_name
+                            else:
+                                # Standardize naming convention for other metrics
+                                storage_name = metric_name + "s" if not metric_name.endswith("s") else metric_name
+                            
                             # Ensure storage exists
                             if storage_name not in self.metrics:
                                 self.metrics[storage_name] = []
                                 
                             # Store the metric
                             self.metrics[storage_name].append(metric_value)
+                    self._collect_hierarchical_metrics(latest_metrics)
                 
                 # Update counters
                 episode_reward += reward
@@ -491,7 +539,7 @@ class RLTrainer:
                         f"  Reward: {mean_reward:.1f} ± {std_reward:.1f} \n"
                         f"  Steps: {mean_steps:.1f} \n"
                         f"  Q-value: {mean_q:.4f} \n"
-                        f"  Buffer size: {buffer_size:,} \n"
+                        f"  Buffer size: {buffer_size if isinstance(buffer_size, str) else f'{buffer_size:,}'} \n"
                         f"  Agent updates: {agent_updates:,} \n"
                         f"  Eval time: {eval_time:.2f}s \n"
                         f"  Training progress: {self.total_frames/self.max_frames*100:.1f}% complete \n"
@@ -591,10 +639,26 @@ class RLTrainer:
             "eval_rewards": self.eval_rewards,
             "q_values": self.q_values,
         }
+
+        # Add metrics needed for policy gradient plots directly
+        policy_gradient_metrics = [
+            "advantage_values", 
+            "policy_grad_norms", 
+            "value_grad_norms", 
+            "entropy",
+            "returns"
+        ]
+
         
         # Add all tracked metrics
+        # First add special policy gradient metrics
+        for pg_metric in policy_gradient_metrics:
+            if pg_metric in self.metrics and self.metrics[pg_metric]:
+                training_data[pg_metric] = self.metrics[pg_metric]
+
+        # Then add any other metrics
         for metric_name, metric_values in self.metrics.items():
-            if metric_values:  # Only add non-empty metrics
+            if metric_values and metric_name not in policy_gradient_metrics:
                 clean_name = metric_name.replace("_values", "")
                 training_data[clean_name] = metric_values
         

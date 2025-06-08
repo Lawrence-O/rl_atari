@@ -86,7 +86,10 @@ def preprocess_observation(observation, device=None):
     # print(f"Original observation shape: {observation.shape}")
     
     # Reshape based on the observation's shape
-    if len(observation.shape) == 5:  # [batch, frames, height, width, channel]
+    if len(observation.shape) == 1:  # Vector observation (e.g., CartPole)
+        # Add batch dimension for vector observations
+        observation = observation.reshape(1, -1)
+    elif len(observation.shape) == 5:  # [batch, frames, height, width, channel]
         # Convert to [batch, channels, height, width] for CNN
         observation = np.transpose(observation, (0, 4, 1, 2, 3))  
         observation = observation.reshape(observation.shape[0], -1, observation.shape[3], observation.shape[4])
@@ -114,3 +117,46 @@ def preprocess_observation(observation, device=None):
     # print(f"Processed tensor shape: {tensor.shape}")
         
     return tensor
+
+class ClassicControlWrapper:
+    """Wrapper for Classic Control environments like CartPole"""
+    
+    def __init__(self, env_name, render_mode=None):
+        """Initialize the environment
+        
+        Args:
+            env_name: Name of the environment
+            render_mode: Render mode for visualization
+        """
+        self.env_name = env_name
+        self.render_mode = render_mode
+        self.env = self._make_env()
+        
+        # Track environment properties
+        self.observation_space = self.env.observation_space
+        self.action_space = self.env.action_space
+        self.frame_skip = 1  # No frame skipping for classic control
+        self.frame_stack = 1  # No frame stacking for classic control
+    
+    def _make_env(self):
+        """Create the environment"""
+        env = gym.make(self.env_name, render_mode=self.render_mode)
+        return env
+    
+    def reset(self):
+        """Reset the environment"""
+        return self.env.reset()
+    
+    def step(self, action):
+        """Take a step in the environment"""
+        return self.env.step(action)
+    
+    def close(self):
+        """Close the environment"""
+        return self.env.close()
+    
+    def get_state_shape(self):
+        """Get the shape of the state"""
+        if isinstance(self.observation_space, gym.spaces.Box):
+            return self.observation_space.shape[0]  # Return the flat dimension for vector inputs
+        return self.observation_space.shape

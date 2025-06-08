@@ -73,6 +73,9 @@ class RainbowAgent(Agent):
         Returns:
             Selected action
         """
+        if hasattr(self.policy_net, 'reset_noise'):
+            self.policy_net.reset_noise()
+
         if training:
             self.steps_done += 1
             
@@ -180,6 +183,12 @@ class RainbowAgent(Agent):
         else:
             state, action, reward, non_final_next_states, non_final_mask, done, weights, indices = experience
         
+        # Reset noise before each update
+        if hasattr(self.policy_net, 'reset_noise'):
+            self.policy_net.reset_noise()
+        if hasattr(self.target_net, 'reset_noise'):
+            self.target_net.reset_noise()
+        
         # Calculate Q values
         state_action_values = self.policy_net(state).gather(1, action.unsqueeze(1)).squeeze(1)
         
@@ -211,7 +220,6 @@ class RainbowAgent(Agent):
         # Clip Gradients
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 10)
         self.optimizer.step()
-        self.policy_net.reset_noise()
 
         # Update priorities
         if indices is not None:
@@ -246,7 +254,7 @@ class RainbowAgent(Agent):
             "mean_td_error": mean_td_error,
             "weight_variance": weight_variance,
             "memory_size": len(self.memory),
-            "beta": getattr(self.memory, 'beta', None),
+            "beta_value": getattr(self.memory, 'beta', None),
             "weight_sigma": noise_metrics["weight_sigma"],
             "bias_sigma": noise_metrics["bias_sigma"],
             "noise_magnitude": noise_metrics["noise_magnitude"],
