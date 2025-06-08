@@ -13,11 +13,17 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.trainer import RLTrainer
 from algorithms.dqn.dqn_agent import DQNAgent
 from algorithms.dqn.rainbow_agent import RainbowAgent
+from algorithms.policy_gradient._ppo import PPOAgent
+from algorithms.policy_gradient.reinforce import ReinforceAgent
+from algorithms.dqn.options_rainbow_agent import OptionsRainbowAgent
 
 # Dictionary mapping agent names to agent classes
 AGENT_CLASSES = {
     "dqn": DQNAgent,
     "rainbow": RainbowAgent,
+    "reinforce": ReinforceAgent,
+    "ppo": PPOAgent,
+    'hrl': OptionsRainbowAgent,
 }
 
 
