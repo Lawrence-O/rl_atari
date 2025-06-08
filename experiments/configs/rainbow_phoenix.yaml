@@ -1,0 +1,41 @@
+# Rainbow DQN configuration for Phoenix
+
+# Environment settings
+env_name: "ALE/Phoenix-v5"
+frame_skip: 4
+frame_stack: 4
+episode_life: true
+clip_rewards: true
+
+# Core agent parameters
+gamma: 0.99
+learning_rate: 0.000125  # 6.25e-5, typically lower than vanilla DQN
+batch_size: 32
+target_update_freq: 8000
+
+# Replay buffer parameters
+replay_start_size: 20000 # Number of steps before training starts
+buffer_size: 100000
+alpha: 0.6              # PER: Priority exponent (how much to use priorities)
+beta: 0.4               # PER: Initial importance sampling weight
+beta_annealing: 250000   # PER: Number of steps to anneal beta to 1.0 10000000
+td_error_epsilon: 1e-6  # PER: Small constant to add to priorities
+
+# N-step returns
+n_steps: 3              # Number of steps for n-step returns (was 4)
+
+max_steps_per_episode: 108000  # Max number of steps per episode
+num_evaluation_episodes: 10   # Number of episodes to evaluate
+log_freq: 10                  # Log every episode
+video_record_frequency: 2  # Record every X evaluations
+
+eval_frequency_frames: 50000  # Evaluate every 1M frames (replaces episode-based eval) 
+save_frequency_frames: 200000  # Save every 2M frames 
+max_frames: 5000000           # Total frames to train for (typically 50M in papers) 
+
+# Hardware and randomness
+seed: 42
+device: "cuda"  # Use "cpu" if no GPU availablen_steps: 4 
+
+# NoisyNet parameters
+min_sigma: 1e-3           # Minimum sigma value for NoisyNet (prevents collapse)
